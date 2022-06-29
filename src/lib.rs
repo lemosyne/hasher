@@ -50,6 +50,10 @@ macro_rules! hasher_bulk_impl {
     };
 }
 
+pub mod prelude {
+    pub use crate::*;
+}
+
 hasher_bulk_impl![
     (Sha224, 28),
     (Sha256, 32),
