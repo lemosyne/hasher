@@ -1,7 +1,3 @@
-use openssl::md::Md;
-use openssl::md_ctx::MdCtx;
-use paste::paste;
-
 pub trait Hasher<const N: usize> {
     fn new() -> Self;
 
@@ -12,6 +8,14 @@ pub trait Hasher<const N: usize> {
     fn digest(data: &[u8]) -> [u8; N];
 }
 
+#[cfg(feature = "openssl")]
+use openssl::md::Md;
+#[cfg(feature = "openssl")]
+use openssl::md_ctx::MdCtx;
+#[cfg(feature = "openssl")]
+use paste::paste;
+
+#[cfg(feature = "openssl")]
 macro_rules! hasher_bulk_impl {
     ($(($hasher:ident, $size:literal)),*$(,)?) => {
         $(
@@ -23,6 +27,7 @@ macro_rules! hasher_bulk_impl {
                 pub const [<$hasher:upper _MD_SIZE>]: usize = $size;
 
                 impl Hasher<$size> for $hasher {
+
                     fn new() -> Self {
                         let mut ctx = MdCtx::new().unwrap();
                         ctx.digest_init(Md::[<$hasher:lower>]()).unwrap();
@@ -50,10 +55,7 @@ macro_rules! hasher_bulk_impl {
     };
 }
 
-pub mod prelude {
-    pub use crate::*;
-}
-
+#[cfg(feature = "openssl")]
 hasher_bulk_impl![
     (Sha224, 28),
     (Sha256, 32),
@@ -66,9 +68,13 @@ hasher_bulk_impl![
 ];
 
 #[cfg(test)]
-mod hasher_tests {
+mod tests {
+    #[cfg(feature = "openssl")]
     use super::*;
+    #[cfg(feature = "openssl")]
+    use paste::paste;
 
+    #[cfg(feature = "openssl")]
     macro_rules! hasher_test_bulk_impl {
         ($(($hasher:ident, $expected:literal)),*$(,)?) => {
             $(
@@ -85,6 +91,7 @@ mod hasher_tests {
         };
     }
 
+    #[cfg(feature = "openssl")]
     hasher_test_bulk_impl![
         (
             Sha224,
