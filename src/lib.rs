@@ -1,18 +1,19 @@
 pub trait Hasher<const N: usize> {
+    type Error;
+
     fn new() -> Self;
 
-    fn update(&mut self, data: &[u8]);
+    fn update(&mut self, data: &[u8]) -> Result<(), Self::Error>;
 
-    fn finish(self) -> [u8; N];
+    fn finish(self) -> Result<[u8; N], Self::Error>;
 
-    fn digest(data: &[u8]) -> [u8; N];
+    fn digest(data: &[u8]) -> Result<[u8; N], Self::Error>;
 }
 
 #[cfg(feature = "openssl")]
 pub mod openssl {
     use crate::Hasher;
-    use openssl::md::Md;
-    use openssl::md_ctx::MdCtx;
+    use openssl::{error::ErrorStack, md::Md, md_ctx::MdCtx};
     use paste::paste;
 
     macro_rules! hasher_bulk_impl {
@@ -26,26 +27,29 @@ pub mod openssl {
                     pub const [<$hasher:upper _MD_SIZE>]: usize = $size;
 
                     impl Hasher<$size> for $hasher {
+                        type Error = ErrorStack;
 
                         fn new() -> Self {
+                            // We have big problems if we cannot allocate a new `MdCtx`.
+                            // `MdCtx` is initialized once, so `digest_init()` should never fail.
                             let mut ctx = MdCtx::new().unwrap();
                             ctx.digest_init(Md::[<$hasher:lower>]()).unwrap();
                             Self { ctx }
                         }
 
-                        fn update(&mut self, data: &[u8]) {
-                            self.ctx.digest_update(data).unwrap();
+                        fn update(&mut self, data: &[u8]) -> Result<(), Self::Error> {
+                            self.ctx.digest_update(data)
                         }
 
-                        fn finish(mut self) -> [u8; $size] {
+                        fn finish(mut self) -> Result<[u8; $size], Self::Error> {
                             let mut digest = [0; $size];
-                            self.ctx.digest_final(&mut digest).unwrap();
-                            digest
+                            self.ctx.digest_final(&mut digest)?;
+                            Ok(digest)
                         }
 
-                        fn digest(data: &[u8]) -> [u8; $size] {
+                        fn digest(data: &[u8]) -> Result<[u8; $size], Self::Error> {
                             let mut hasher = Self::new();
-                            hasher.update(data);
+                            hasher.update(data)?;
                             hasher.finish()
                         }
                     }
@@ -71,6 +75,7 @@ mod tests {
     #[cfg(feature = "openssl")]
     mod openssl {
         use crate::{openssl::*, Hasher};
+        use anyhow::Result;
         use paste::paste;
 
         macro_rules! hasher_test_bulk_impl {
@@ -78,11 +83,12 @@ mod tests {
                 $(
                     paste! {
                         #[test]
-                        fn [<$hasher:lower>]() {
+                        fn [<$hasher:lower>]() -> Result<()> {
                             assert_eq!(
-                                hex::encode($hasher::digest(b"abcd")),
+                                hex::encode($hasher::digest(b"abcd")?),
                                 $expected
                             );
+                            Ok(())
                         }
                     }
                 )*
